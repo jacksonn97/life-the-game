@@ -1,4 +1,3 @@
-#[allow(unused)]
 
 use std::{
     time::Duration,
@@ -9,7 +8,6 @@ use std::{
         atomic::{ AtomicBool, AtomicU64, Ordering },
         mpsc,
     },
-    collections::LinkedList,
 };
 
 use crossterm::{
@@ -24,8 +22,6 @@ use crossterm::{
 
     },
 };
-
-// use std::time::Instant;
 
 use crate::proc::Field;
 
