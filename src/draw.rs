@@ -25,6 +25,8 @@ use crossterm::{
     },
 };
 
+// use std::time::Instant;
+
 use crate::proc::Field;
 
 type Err = Box<dyn std::error::Error>;
@@ -42,6 +44,50 @@ pub struct App {
     pub pause: AtomicBool,
     maxgen: AtomicU64,
     pub upd_timeout: AtomicU64,
+}
+
+pub struct TimeoutIter {
+    index: usize,
+    vec: Vec<u64>,
+    l: usize,
+}
+
+impl TimeoutIter {
+
+    #[inline]
+    pub fn new(vec: Vec<u64>, start_pos: usize) -> Self {
+        Self {
+            index: start_pos,
+            l: vec.len() - 1,
+            vec,
+        }
+    }
+
+    #[inline]
+    pub fn next(&mut self) -> u64 {
+        let mut u = self.index;
+        if self.index == self.l {
+            self.index = 0;
+            u = 0;
+        } else {
+            self.index += 1;
+            u += 1;
+        }
+        self.vec[u]
+    }
+
+    #[inline]
+    pub fn prev(&mut self) -> u64 {
+        let mut u = self.index;
+        if self.index == 0 {
+            self.index = self.l;
+            u = self.l;
+        } else {
+            self.index -= 1;
+            u -= 1;
+        }
+        self.vec[u]
+    }
 }
 
 impl Rect {
@@ -151,11 +197,8 @@ fn draw(a: App) -> Result<()> {
 
     let _ = thread::Builder::new().name("Keyboard input".into()).spawn(move || {
         let a = arc_keys;
-        static DELAYS: [u64; 14] = [1, 10, 20, 40, 60, 100, 150, 200, 300, 450, 800, 1200, 1500, 2000];
-        let mut current_delay = LinkedList::from(DELAYS);
-        for _ in 0..7 {
-            let _ = current_delay.front();
-        }
+        let d = [0, 1, 2, 4, 8, 10, 15, 20, 25, 30, 40, 50, 80, 100];
+        let mut current_delay = TimeoutIter::new(d.into(), 9);
         loop {
             let _ = hotkeys(&a, &mut current_delay);
         }
@@ -163,18 +206,21 @@ fn draw(a: App) -> Result<()> {
     });
 
     let mut gen = 0u64;
+    // let mut s = Instant::now();
     while gen < a.maxgen() {
 
         if a.should_exit() {
             break
         }
-
+        // println!("{}", s.elapsed().as_millis());
+        // s = Instant::now();
         if !a.pause() {
             gen += 1;
             let field = rx.recv().unwrap();
 
             sleep_ms(a.upd_timeout());
             clear()?;
+            // println!("{}", a.upd_timeout());
             for c in field.data() {
                 for r in c {
                     if *r {
@@ -187,10 +233,15 @@ fn draw(a: App) -> Result<()> {
             }
         }
 
+        if a.should_exit() {
+            break
+        }
+
     }
     Ok(())
 }
 
+#[inline]
 fn clear() -> Result<()> {
     use terminal::{ Clear, ClearType };
     use std::io::stdout;
@@ -200,12 +251,13 @@ fn clear() -> Result<()> {
     Ok(())
 }
 
+#[inline]
 fn sleep_ms(t: u64) {
     thread::sleep(Duration::from_millis(t))
 }
 
 
-fn hotkeys(a: &Arc<App>, del: &mut LinkedList<u64>) -> Result<()> {
+fn hotkeys(a: &Arc<App>, del: &mut TimeoutIter) -> Result<()> {
     if event::poll(Duration::from_millis(150))? {
         if let Event::Key(key) = event::read()? {
             if key.kind == KeyEventKind::Press {
@@ -223,8 +275,9 @@ fn hotkeys(a: &Arc<App>, del: &mut LinkedList<u64>) -> Result<()> {
                                 println!("Paused!\r");
                             }
                         },
-                        KeyCode::Char('j') => a.upd_timeout.store(*del.front().unwrap(), Ordering::Relaxed),
-                        KeyCode::Char('k') => a.upd_timeout.store(*del.back().unwrap(), Ordering::Relaxed),
+                        KeyCode::Char('j') => a.upd_timeout.store(del.prev(), Ordering::Relaxed),
+                        KeyCode::Char('k') => a.upd_timeout.store(del.next(), Ordering::Relaxed),
+                        KeyCode::Char('q') => a.should_exit.store(true, Ordering::Relaxed),
                         _ => {},
                     }
                 }
