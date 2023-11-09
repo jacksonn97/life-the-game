@@ -205,6 +205,7 @@ fn draw(a: App) -> Result<()> {
             if 48 > arc_ticks.frames() {
                 tx.send(field.clone()).unwrap();
                 field.tick();
+                arc_ticks.add_frame();
             } else {
                 thread::sleep(Duration::from_millis(50));
             }
@@ -230,6 +231,7 @@ fn draw(a: App) -> Result<()> {
         }
         if !a.pause() {
             gen += 1;
+            a.need_frame();
             let field = rx.recv().unwrap();
 
             sleep_ms(a.upd_timeout());
