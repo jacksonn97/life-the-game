@@ -35,12 +35,12 @@ pub struct Rect{
 }
 
 pub struct App {
-    pub field: Mutex<Field>,
-    pub should_exit: AtomicBool,
-    pub pause: AtomicBool,
+    field: Mutex<Field>,
+    should_exit: AtomicBool,
+    pause: AtomicBool,
     maxgen: AtomicU64,
-    pub upd_timeout: AtomicU64,
-    pub gist: AtomicU16,
+    upd_timeout: AtomicU64,
+    frames: AtomicU16,
 }
 
 pub struct TimeoutIter {
@@ -126,7 +126,7 @@ impl App {
             pause: false.into(),
             maxgen: maxgen.into(),
             upd_timeout: 450.into(),
-            gist: 6.into(),
+            frames: 6.into(),
         }
     }
 
@@ -150,6 +150,20 @@ impl App {
         self.upd_timeout.load(Ordering::Relaxed)
     }
 
+    #[inline]
+    pub fn need_frame(&self) {
+        self.frames.fetch_sub(1, Ordering::SeqCst);
+    }
+
+    #[inline]
+    pub fn add_frame(&self) {
+        self.frames.fetch_add(1, Ordering::SeqCst);
+    }
+
+    #[inline]
+    pub fn frames(&self) -> u16 {
+        self.frames.load(Ordering::SeqCst)
+    }
 }
 
 pub fn run(a: App) -> Result<()> {
@@ -188,10 +202,9 @@ fn draw(a: App) -> Result<()> {
         let maxgen = arc_ticks.maxgen();
 
         for _ in 0..maxgen {
-            if 48 > arc_ticks.gist.load(Ordering::SeqCst) {
+            if 48 > arc_ticks.frames() {
                 tx.send(field.clone()).unwrap();
                 field.tick();
-                arc_ticks.gist.fetch_add(1, Ordering::SeqCst);
             } else {
                 thread::sleep(Duration::from_millis(50));
             }
@@ -218,7 +231,6 @@ fn draw(a: App) -> Result<()> {
         if !a.pause() {
             gen += 1;
             let field = rx.recv().unwrap();
-            a.gist.fetch_sub(1, Ordering::SeqCst);
 
             sleep_ms(a.upd_timeout());
             clear()?;
