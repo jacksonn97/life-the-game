@@ -5,7 +5,7 @@ use std::{
     sync::{
         Arc,
         Mutex,
-        atomic::{ AtomicBool, AtomicU64, Ordering },
+        atomic::{ AtomicBool, AtomicU64, AtomicU16, Ordering },
         mpsc,
     },
 };
@@ -40,6 +40,7 @@ pub struct App {
     pub pause: AtomicBool,
     maxgen: AtomicU64,
     pub upd_timeout: AtomicU64,
+    pub gist: AtomicU16,
 }
 
 pub struct TimeoutIter {
@@ -125,6 +126,7 @@ impl App {
             pause: false.into(),
             maxgen: maxgen.into(),
             upd_timeout: 450.into(),
+            gist: 6.into(),
         }
     }
 
@@ -184,16 +186,22 @@ fn draw(a: App) -> Result<()> {
     let _ = thread::Builder::new().name("Tick machine".into()).spawn(move || {
         let mut field = arc_ticks.field.lock().unwrap();
         let maxgen = arc_ticks.maxgen();
+
         for _ in 0..maxgen {
-            tx.send(field.clone()).unwrap();
-            field.tick();
+            if 48 > arc_ticks.gist.load(Ordering::SeqCst) {
+                tx.send(field.clone()).unwrap();
+                field.tick();
+                arc_ticks.gist.fetch_add(1, Ordering::SeqCst);
+            } else {
+                thread::sleep(Duration::from_millis(50));
+            }
         }
     });
 
 
     let _ = thread::Builder::new().name("Keyboard input".into()).spawn(move || {
         let a = arc_keys;
-        let d = [0, 1, 2, 4, 8, 10, 15, 20, 25, 30, 40, 50, 80, 100];
+        let d = [0, 1, 2, 4, 8, 10, 15, 20, 25, 30, 40, 50, 80, 100, 1000];
         let mut current_delay = TimeoutIter::new(d.into(), 9);
         loop {
             let _ = hotkeys(&a, &mut current_delay);
@@ -202,21 +210,18 @@ fn draw(a: App) -> Result<()> {
     });
 
     let mut gen = 0u64;
-    // let mut s = Instant::now();
     while gen < a.maxgen() {
 
         if a.should_exit() {
             break
         }
-        // println!("{}", s.elapsed().as_millis());
-        // s = Instant::now();
         if !a.pause() {
             gen += 1;
             let field = rx.recv().unwrap();
+            a.gist.fetch_sub(1, Ordering::SeqCst);
 
             sleep_ms(a.upd_timeout());
             clear()?;
-            // println!("{}", a.upd_timeout());
             for c in field.data() {
                 for r in c {
                     if *r {
@@ -227,6 +232,8 @@ fn draw(a: App) -> Result<()> {
                 }
                 print!("\n\r");
             }
+        } else {
+            thread::sleep(Duration::from_millis(500));
         }
 
         if a.should_exit() {
