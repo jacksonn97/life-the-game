@@ -159,49 +159,53 @@ mod app {
     }
 
 }
+use timeout_iter::TimeoutIter;
+mod timeout_iter {
 
-pub struct TimeoutIter {
-    index: usize,
-    vec: Vec<u64>,
-    l: usize,
-}
+    pub struct TimeoutIter {
+        index: usize,
+        vec: Vec<u64>,
+        l: usize,
+    }
 
-impl TimeoutIter {
+    impl TimeoutIter {
 
-    #[inline]
-    pub fn new(vec: Vec<u64>, start_pos: usize) -> Self {
-        Self {
-            index: start_pos,
-            l: vec.len() - 1,
-            vec,
+        #[inline]
+        pub fn new(vec: Vec<u64>, start_pos: usize) -> Self {
+            Self {
+                index: start_pos,
+                l: vec.len() - 1,
+                vec,
+            }
+        }
+
+        #[inline]
+        pub fn next(&mut self) -> u64 {
+            let mut u = self.index;
+            if self.index == self.l {
+                self.index = 0;
+                u = 0;
+            } else {
+                self.index += 1;
+                u += 1;
+            }
+            self.vec[u]
+        }
+
+        #[inline]
+        pub fn prev(&mut self) -> u64 {
+            let mut u = self.index;
+            if self.index == 0 {
+                self.index = self.l;
+                u = self.l;
+            } else {
+                self.index -= 1;
+                u -= 1;
+            }
+            self.vec[u]
         }
     }
 
-    #[inline]
-    pub fn next(&mut self) -> u64 {
-        let mut u = self.index;
-        if self.index == self.l {
-            self.index = 0;
-            u = 0;
-        } else {
-            self.index += 1;
-            u += 1;
-        }
-        self.vec[u]
-    }
-
-    #[inline]
-    pub fn prev(&mut self) -> u64 {
-        let mut u = self.index;
-        if self.index == 0 {
-            self.index = self.l;
-            u = self.l;
-        } else {
-            self.index -= 1;
-            u -= 1;
-        }
-        self.vec[u]
-    }
 }
 
 pub fn run(a: App) -> Result<()> {
@@ -239,13 +243,15 @@ fn draw(a: App) -> Result<()> {
         let mut field = arc_ticks.field().lock().unwrap();
         let maxgen = arc_ticks.maxgen();
 
-        for _ in 0..maxgen {
-            if 48 > arc_ticks.frames() {
+        let mut gen = 0u64;
+        while gen < maxgen {
+            if 24 > arc_ticks.frames() {
                 tx.send(field.clone()).unwrap();
                 field.tick();
                 arc_ticks.add_frame();
+                gen += 1;
             } else {
-                thread::sleep(Duration::from_millis(50));
+                thread::sleep(Duration::from_millis(20));
             }
         }
     });
@@ -278,20 +284,18 @@ fn draw(a: App) -> Result<()> {
             for c in field.data() {
                 for r in c {
                     if *r {
-                        print!("#");
+                        print!("#")
                     } else {
-                        print!(" ");
+                        print!(" ")
                     }
                 }
-                print!("\n\r");
+                print!("\n\r")
             }
-            f = true;
-        } else {
-            if f {
-                f = false;
-                println!("Paused!\r")
-            }
-            thread::sleep(Duration::from_millis(500));
+            f = true
+        } else if f {
+            f = false;
+            println!("Paused!\r");
+            thread::sleep(Duration::from_millis(20));
         }
 
         if a.is_should_exit() {
