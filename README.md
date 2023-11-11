@@ -1,1 +1,1 @@
-# life_the_game
+# life-the-game
